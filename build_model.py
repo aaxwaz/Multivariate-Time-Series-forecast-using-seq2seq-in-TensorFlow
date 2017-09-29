@@ -7,13 +7,20 @@ learning_rate = 0.01
 lambda_l2_reg = 0.003  
 
 ## Network Parameters
-input_seq_len = 15
-output_seq_len = 20
-hidden_dim = 64 # hidden layer num of features - BEST 200
-input_dim = 3
-output_dim = 2
-num_stacked_layers = 2
-GRADIENT_CLIPPING = 2.5
+# length of input signals
+input_seq_len = 15 
+# length of output signals
+output_seq_len = 20 
+# size of LSTM Cell
+hidden_dim = 64 
+# num of input signals
+input_dim = 3 
+# num of output signals
+output_dim = 2 
+# num of stacked lstm layers 
+num_stacked_layers = 2 
+# gradient clipping - to avoid gradient exploding
+GRADIENT_CLIPPING = 2.5 
 
 def build_graph(feed_previous = False):
     
@@ -26,20 +33,12 @@ def build_graph(feed_previous = False):
                   collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
     
     weights = {
-        'in': tf.get_variable('Weights_in', \
-                               shape = [input_dim, hidden_dim], \
-                               dtype = tf.float32, \
-                               initializer = tf.truncated_normal_initializer()),
         'out': tf.get_variable('Weights_out', \
                                shape = [hidden_dim, output_dim], \
                                dtype = tf.float32, \
                                initializer = tf.truncated_normal_initializer()),
     }
     biases = {
-        'in': tf.get_variable('Biases_in', \
-                               shape = [hidden_dim], \
-                               dtype = tf.float32, \
-                               initializer = tf.constant_initializer(1.)),
         'out': tf.get_variable('Biases_out', \
                                shape = [output_dim], \
                                dtype = tf.float32, \
@@ -70,9 +69,7 @@ def build_graph(feed_previous = False):
                 with tf.variable_scope('RNN_{}'.format(i)):
                     cells.append(tf.contrib.rnn.LSTMCell(hidden_dim))
             cell = tf.contrib.rnn.MultiRNNCell(cells)
-        
-        reshaped_inputs = [tf.nn.relu(tf.matmul(i, weights['in']) + biases['in']) for i in enc_inp]
- 
+         
         def _rnn_decoder(decoder_inputs,
                         initial_state,
                         cell,
@@ -152,7 +149,10 @@ def build_graph(feed_previous = False):
                 return _rnn_decoder(decoder_inputs, enc_state, cell)
 
         def _loop_function(prev, _):
-            return tf.matmul(prev, weights['out']) + biases['out']
+          '''Naive implementation of loop function for _rnn_decoder. Transform prev from 
+          dimension [batch_size x hidden_dim] to [batch_size x output_dim], which will be
+          used as decoder input of next time step '''
+          return tf.matmul(prev, weights['out']) + biases['out']
         
         dec_outputs, dec_memory = _basic_rnn_seq2seq(
             enc_inp, 
@@ -170,7 +170,7 @@ def build_graph(feed_previous = False):
         for _y, _Y in zip(reshaped_outputs, target_seq):
             output_loss += tf.reduce_mean(tf.pow(_y - _Y, 2))
 
-        # L2 regularization 
+        # L2 regularization for weights and biases
         reg_loss = 0
         for tf_var in tf.trainable_variables():
             if 'Biases_' in tf_var.name or 'Weights_' in tf_var.name:
@@ -191,7 +191,6 @@ def build_graph(feed_previous = False):
     return dict(
         enc_inp = enc_inp, 
         target_seq = target_seq, 
-        dec_inp = dec_inp, 
         train_op = optimizer, 
         loss=loss,
         saver = saver, 
