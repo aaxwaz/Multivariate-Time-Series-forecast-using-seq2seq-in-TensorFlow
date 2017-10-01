@@ -1,3 +1,4 @@
+import tensorflow as tf 
 from tensorflow.contrib import rnn
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.framework import dtypes
