@@ -1,4 +1,4 @@
-import tensorflow as tf 
+import tensorflow as tf
 from tensorflow.contrib import rnn
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.framework import dtypes
@@ -38,23 +38,13 @@ def build_graph(feed_previous = False):
         'out': tf.get_variable('Weights_out', \
                                shape = [hidden_dim, output_dim], \
                                dtype = tf.float32, \
-                               initializer = tf.contrib.layers.xavier_initializer()),
-
-        'out_dec_inp': tf.get_variable('Weights_out_dec', \
-                               shape = [output_dim+1, output_dim], \
-                               dtype = tf.float32, \
-                               initializer = tf.contrib.layers.xavier_initializer()),
+                               initializer = tf.truncated_normal_initializer()),
     }
     biases = {
         'out': tf.get_variable('Biases_out', \
                                shape = [output_dim], \
                                dtype = tf.float32, \
-                               initializer = tf.zeros_initializer()),
-
-        'out_dec_inp': tf.get_variable('Biases_out_dec', \
-                               shape = [output_dim], \
-                               dtype = tf.float32, \
-                               initializer = tf.zeros_initializer()),
+                               initializer = tf.constant_initializer(0.)),
     }
                                           
     with tf.variable_scope('Seq2seq'):
@@ -70,25 +60,10 @@ def build_graph(feed_previous = False):
               for t in range(output_seq_len)
         ]
 
-        # Extreme events bool vectors for input seq
-        #input_seq_extremes_bool = [
-        #    tf.placeholder(tf.float32, shape=(None, 1), name="event_bool".format(t))
-        #      for t in range(input_seq_len)
-        #]
-
-        # Extreme events bool vectors for output seq
-        output_seq_extremes_bool = [
-            tf.placeholder(tf.float32, shape=(None, 1), name="event_bool".format(t))
-              for t in range(output_seq_len)
-        ]
-
         # Give a "GO" token to the decoder. 
         # If dec_inp are fed into decoder as inputs, this is 'guided' training; otherwise only the 
         # first element will be fed as decoder input which is then 'un-guided'
         dec_inp = [ tf.zeros_like(target_seq[0], dtype=tf.float32, name="GO") ] + target_seq[:-1]
-        dec_inp = [ tf.concat([b, d], 1) for b, d in zip(output_seq_extremes_bool, dec_inp) ]
-
-        #enc_inp = [ tf.concat([b, e], 1) for b, e in zip(input_seq_extremes_bool, enc_inp_raw) ]
 
         with tf.variable_scope('LSTMCell'): 
             cells = []
@@ -133,8 +108,6 @@ def build_graph(feed_previous = False):
               if loop_function is not None and prev is not None:
                 with variable_scope.variable_scope("loop_function", reuse=True):
                   inp = loop_function(prev, i)
-              else:
-                inp = tf.matmul(inp, weights['out_dec_inp']) + biases['out_dec_inp']
               if i > 0:
                 variable_scope.get_variable_scope().reuse_variables()
               output, state = cell(inp, state)
@@ -177,15 +150,12 @@ def build_graph(feed_previous = False):
             else:
                 return _rnn_decoder(decoder_inputs, enc_state, cell)
 
-        def _loop_function(prev, i):
+        def _loop_function(prev, _):
           '''Naive implementation of loop function for _rnn_decoder. Transform prev from 
           dimension [batch_size x hidden_dim] to [batch_size x output_dim], which will be
           used as decoder input of next time step '''
-          #return tf.matmul(prev, weights['out']) + biases['out']
-          temp_out = tf.matmul(prev, weights['out']) + biases['out']
-          temp_concat = tf.concat([output_seq_extremes_bool[i], temp_out], 1)
-          return tf.matmul(temp_concat, weights['out_dec_inp']) + biases['out_dec_inp']
-
+          return tf.matmul(prev, weights['out']) + biases['out']
+        
         dec_outputs, dec_memory = _basic_rnn_seq2seq(
             enc_inp, 
             dec_inp, 
@@ -227,5 +197,4 @@ def build_graph(feed_previous = False):
         loss=loss,
         saver = saver, 
         reshaped_outputs = reshaped_outputs,
-        output_seq_extremes_bool = output_seq_extremes_bool, 
         )
